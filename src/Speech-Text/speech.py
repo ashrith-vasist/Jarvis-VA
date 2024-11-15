@@ -1,6 +1,6 @@
 import speech_recognition as sr
 import pyttsx3
-import webbrowser
+import requests  # For API calls
 import os
 import wikipedia
 import nltk
@@ -18,6 +18,10 @@ tts_engine = pyttsx3.init()
 voices = tts_engine.getProperty('voices')
 tts_engine.setProperty('voice', voices[1].id)  # Use female voice (can be adjusted)
 tts_engine.setProperty('rate', 150)
+
+# Deep Search API configuration
+API_KEY = "YOUR_DEEPSEARCH_API_KEY"  # Replace with your actual API key
+SEARCH_ENDPOINT = "https://api.deepsearch.com/search"
 
 # Functions for different tasks
 def speak(text):
@@ -53,10 +57,21 @@ def open_application(app_name):
     else:
         speak("Application not found in my list.")
 
-def search_web(query):
-    url = f"https://www.google.com/search?q={query}"
-    webbrowser.open(url)
-    speak(f"Here is what I found for {query} on the web.")
+def search_deep(query):
+    try:
+        headers = {"Authorization": f"Bearer {API_KEY}"}
+        payload = {"query": query}
+        response = requests.post(SEARCH_ENDPOINT, headers=headers, json=payload)
+        response.raise_for_status()  # Raise an exception for 4XX/5XX errors
+        results = response.json().get("results", [])
+        if results:
+            top_result = results[0].get("title", "No title") + ": " + results[0].get("snippet", "No details available")
+            speak(f"Here's the top result: {top_result}")
+        else:
+            speak("No results found.")
+    except requests.RequestException as e:
+        speak("There was an error with the Deep Search service.")
+        print(e)
 
 def fetch_wikipedia_info(topic):
     try:
@@ -66,11 +81,6 @@ def fetch_wikipedia_info(topic):
         speak("There are multiple entries. Please be more specific.")
     except wikipedia.exceptions.PageError:
         speak("I couldn't find any information on that topic.")
-
-def set_reminder(time, reminder):
-    current_time = datetime.now().strftime("%H:%M")
-    if time == current_time:
-        speak(f"Reminder: {reminder}")
 
 def execute_command(command):
     if "open" in command:
@@ -84,25 +94,16 @@ def execute_command(command):
             speak("I can't open that application.")
 
     elif "search for" in command:
-        query = command.replace("search for", "")
-        search_web(query)
+        query = command.replace("search for", "").strip()
+        search_deep(query)
 
     elif "tell me about" in command:
-        topic = command.replace("tell me about", "")
+        topic = command.replace("tell me about", "").strip()
         fetch_wikipedia_info(topic)
 
-    elif "remind me" in command:
-        try:
-            words = nltk.word_tokenize(command)
-            tagged = nltk.pos_tag(words)
-            time = next(word for word, pos in tagged if pos == 'CD')
-            reminder = command.split("to")[1]
-            set_reminder(time, reminder)
-        except:
-            speak("Please specify the reminder time and message.")
-
-    else:
-        speak("I'm sorry, I don't recognize that command.")
+    elif "exit" in command or "stop" in command:
+        speak("Goodbye!")
+        exit()
 
 def main():
     speak("Hello! I am your voice assistant. How can I help you today?")
@@ -110,9 +111,6 @@ def main():
         command = listen()
         if command:
             execute_command(command)
-        if "exit" in command or "stop" in command:
-            speak("Goodbye!")
-            break
 
 if __name__ == "__main__":
     main()
