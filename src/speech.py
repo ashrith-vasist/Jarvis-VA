@@ -5,6 +5,8 @@ import os
 import wikipedia
 import nltk
 from datetime import datetime
+import subprocess
+import ctypes
 
 # Download necessary NLTK data
 nltk.download('punkt')
@@ -44,19 +46,47 @@ def listen():
             speak("Service is down at the moment. Please try again later.")
             return ""
 
-def open_application(app_name):
-    paths = {
-        "chrome": "C:/Program Files/Google/Chrome/Application/chrome.exe",
-        "notepad": "C:/Windows/system32/notepad.exe",
-        "calculator": "C:/Windows/system32/calc.exe"
-    }
-    path = paths.get(app_name)
-    if path:
-        os.startfile(path)
-        speak(f"Opening {app_name}")
-    else:
-        speak("Application not found in my list.")
+def search_app(app_name):
+    search_dirs = [
+    "C:/Program Files",
+    "C:/Program Files (x86)",
+    "C:/Windows/System32"
+    ]
+    for directory in search_dirs:
+        for root, dirs, files in os.walk(directory) :
+            for file in files:
+                if app_name.lower() in file.lower() :
+                    return os.path.join(root, file)
 
+##opens application
+def open_application(app_name):
+    path = search_app(app_name)
+    if path:
+        try:
+            # Try to open the application normally
+            speak(f"Opening {app_name}...")
+            subprocess.run([path], check=True)
+        except PermissionError:
+            # Check if the script is already running as Administrator
+            if not ctypes.windll.shell32.IsUserAnAdmin():
+                speak(f"Access denied. Attempting to open {app_name} with administrator privileges.")
+                try:
+                    ctypes.windll.shell32.ShellExecuteW(None, "runas", path, None, None, 1)
+                except Exception as e:
+                    speak(f"Failed to open {app_name} with admin privileges.")
+                    print(f"Error: {e}")
+            else:
+                speak(f"Access denied, even with Administrator privileges.")
+        except Exception as e:
+            speak(f"An error occurred while trying to open {app_name}.")
+            print(f"Error: {e}")
+    else:
+        speak(f"Application {app_name} not found.")
+
+
+
+
+#### Idk wtf is this 
 def search_deep(query):
     try:
         headers = {"Authorization": f"Bearer {API_KEY}"}
@@ -73,25 +103,33 @@ def search_deep(query):
         speak("There was an error with the Deep Search service.")
         print(e)
 
+
+
+
+
+
+
+
+
+#Searches for info in wiki
 def fetch_wikipedia_info(topic):
     try:
         summary = wikipedia.summary(topic, sentences=2)
+        print(f"Summary: {summary}")
         speak(summary)
     except wikipedia.exceptions.DisambiguationError:
         speak("There are multiple entries. Please be more specific.")
     except wikipedia.exceptions.PageError:
         speak("I couldn't find any information on that topic.")
 
+
 def execute_command(command):
     if "open" in command:
-        if "chrome" in command:
-            open_application("chrome")
-        elif "notepad" in command:
-            open_application("notepad")
-        elif "calculator" in command:
-            open_application("calculator")
+        app_name = command.replace("open", "").strip()  # Remove "open" and any surrounding spaces
+        if app_name:
+            open_application(f"{app_name}.exe")  # Assuming the app name with `.exe`
         else:
-            speak("I can't open that application.")
+            speak("Please specify the application to open.")
 
     elif "search for" in command:
         query = command.replace("search for", "").strip()
