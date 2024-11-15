@@ -66,6 +66,8 @@ coverage.xml
 # Virtual environment
 env/
 venv/
+.venv/
+myenv/
 ENV/
 env.bak/
 venv.bak/
