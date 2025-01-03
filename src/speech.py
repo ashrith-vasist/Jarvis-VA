@@ -33,11 +33,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Configure Gemini
 genai.configure(api_key="api_key")
 
 # Spotify API credentials
-CLIENT_ID = "Client-id"  # Replace with your Spotify app's Client ID
+CLIENT_ID = "client-id"  # Replace with your Spotify app's Client ID
 CLIENT_SECRET = "client-secret"  # Replace with your Spotify app's Client Secret
 REDIRECT_URI = "http://localhost:8888/callback/"  # Redirect URI you set in your Spotify app
 
