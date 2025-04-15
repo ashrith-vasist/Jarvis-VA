@@ -89,21 +89,28 @@ class VoiceAssistant:
     def get_confirmation(self) -> bool:
         """Get confirmation from the user."""
         self.speak("Please say yes or no clearly")
-        with sr.Microphone() as source:
-            try:
-                logger.info("Listening for confirmation...")
-                self.recognizer.adjust_for_ambient_noise(source, duration=1)
-                audio = self.recognizer.listen(source, timeout=10, phrase_time_limit=5)
-                command = self.recognizer.recognize_google(audio).lower()
-                logger.info(f"Confirmation response: {command}")
-                
-                affirmative_responses = ["yes", "yeah", "yep", "sure", "okay", "ok"]
-                return any(response in command for response in affirmative_responses)
-                
-            except Exception as e:
-                logger.error(f"Error during confirmation: {e}")
+        try:                
+            command = self.listen()
+            if not command:
+                self.speak("I couldn't hear your response. Please try again.")
+                return False
+            command = command.lower().strip()
+            logger.info(f"User response: '{command}'")
+            # Check for affirmative responses               
+            affirmative_responses = ["yes", "yeah", "yep", "sure", "okay", "ok","yes ok","yes okay", "absolutely", "definitely"]
+            negative_responses = ["no", "nope", "nah", "not really", "never"]
+            if any(response in command for response in affirmative_responses):
+                self.speak("Thank you for confirming.")
+                return True
+            elif any(response in command for response in negative_responses):
+                self.speak("Thank you for your response.")
+                return False
+            else:
                 self.speak("I didn't understand your response. Please try again.")
                 return False
+        except sr.UnknownValueError:
+            self.speak("I didn't understand your response. Please try again.")
+            return False
 
     def _load_admin_passphrase(self) -> str:
         """Load admin passphrase from config file or create new one."""
@@ -161,7 +168,7 @@ class VoiceAssistant:
     def authenticate_admin(self) -> bool:
         """Authenticate user as admin using voice passphrase."""
         if not self.admin_passphrase:
-            self.speak("No admin passphrase is set. Would you like to set one now?")
+            self.speak("No admin passphrase is set. Would you like to set one now? lol god")
             if self.get_confirmation():
                 self.setup_admin_passphrase()
             return False
@@ -229,26 +236,78 @@ class VoiceAssistant:
             print(f"Failed to speak: {text}")
 
     def listen(self) -> str:
-        """Listen for voice input and convert to text."""
+        """
+        Enhanced listening function with optimized voice recognition settings.
+        Returns the recognized text in lowercase or empty string if recognition fails.
+        """
         with sr.Microphone() as source:
             try:
                 if self.gui:
                     self.gui.set_listening_state(True)
-                logger.info("Listening...")
-                self.recognizer.adjust_for_ambient_noise(source, duration=1)
-                audio = self.recognizer.listen(source, timeout=10)
-                command = self.recognizer.recognize_google(audio)
+                    
+                logger.info("Listening for user input...")
+                
+                # Configure recognizer for better performance
+                self.recognizer.dynamic_energy_threshold = True
+                self.recognizer.energy_threshold = 300  # Adjust based on your environment
+                self.recognizer.dynamic_energy_adjustment_ratio = 1.5
+                self.recognizer.pause_threshold = 0.8  # Shorter pause to detect end of speech
+                
+                # Adjust for ambient noise with longer duration for better calibration
+                self.recognizer.adjust_for_ambient_noise(source, duration=1.5)
+                
+                print("Speak now...")
+                
+                # Listen with generous timeout settings
+                audio = self.recognizer.listen(
+                    source, 
+                    timeout=8,  # Maximum wait for speech to start
+                    phrase_time_limit=7  # Maximum duration of speech
+                )
+                
+                logger.info("Audio captured, recognizing speech...")
+                
+                # Try multiple recognition services for better reliability
+                try:
+                    # Primary recognition service
+                    command = self.recognizer.recognize_google(audio, language='en-US')
+                    logger.info(f"Successfully recognized: '{command}'")
+                except sr.RequestError:
+                    # Fallback to offline recognizer if network issues
+                    try:
+                        # Requires pocketsphinx to be installed
+                        command = self.recognizer.recognize_sphinx(audio)
+                        logger.info(f"Recognized using fallback (Sphinx): '{command}'")
+                    except:
+                        raise Exception("All speech recognition methods failed")
+                
+                # Update GUI if it exists
                 if self.gui:
                     self.gui.add_message(command, is_user=True)
                     self.gui.set_listening_state(False)
-                logger.info(f"User said: {command}")
-                return command.lower()
-            except Exception as e:
-                logger.error(f"Error in listen(): {e}")
-                self.speak("I didn't catch that. Could you please repeat?")
+                    
+                # Clean and normalize response
+                command = command.lower().strip()
+                logger.info(f"Final processed command: '{command}'")
+                return command
+                
+            except sr.WaitTimeoutError:
+                logger.warning("Timeout: No speech detected")
+                if self.gui: 
+                    self.gui.set_listening_state(False)
+                return ""
+                
+            except sr.UnknownValueError:
+                logger.warning("Speech was unintelligible")
                 if self.gui:
                     self.gui.set_listening_state(False)
-            return ""
+                return ""
+                
+            except Exception as e:
+                logger.error(f"Error in speech recognition: {e}")
+                if self.gui:
+                    self.gui.set_listening_state(False)
+                return ""
 
     def search_app(self, app_name: str) -> Optional[str]:
         """Search for application in common directories."""
